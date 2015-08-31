@@ -1,0 +1,116 @@
+#!/bin/bash
+#
+# Copyright (c) 2005 Eric Engstrom
+# See the file LICENSE for copying permissions and restrictions.
+#
+# Author:  Eric Engstrom (first(-DOT-)last(-AT-)g m a i l(-DOT-)c o m)
+#
+# Simple shell wrapper to proxy/tunnel or hop through ssh when unable
+# to connect directly.  Often useful on laptops, especially when only
+# SOMETIMES behind a draconian firewall or outside a network with
+# limited ssh connections inbound.
+# 
+# Intended for use inside an ssh-config file, something like this:
+#    Host *
+#      ProxyCommand $HOME/.ssh/proxy -p httpproxy.foo.com:8080 %h %p
+#  or 
+#      ProxyCommand $HOME/.ssh/proxy -h ssh-hop.foo.com:8080 %h %p
+#
+# Generally, the usage of this is:
+#    proxy [optional-args] [-p <http-proxy>[:<proxy-port>]] \
+#                          [-h <ssh-hop-host>[:<hop-port>]] <host> <port>
+# with optional args:
+#   [-n <netcat>] - version or path to netcat/direct-connect program
+#   [-t <tunnel>] - version or path of http-tunnel program
+#   [-w <timout>] - timeout (seconds) to test connection to proxy server
+#
+# This script assumes ssh, netcat (nc) and corkscrew (an http-proxy
+# available from http://www.agroman.net/corkscrew).  As an alternative
+# to corkscrew, some people have repoted success using desproxy
+# (http://sourceforge.net/projects/desproxy/).
+#
+# Netcat is used both to detect the availablility of the destination
+# or proxy hosts as well as for direct connections.  Both are assumed
+# to be resident in your PATH.  If not, you may specify a different
+# http-proxy or alternate location for netcat on the command line (in
+# your ssh config) OR, of course, "use the source, Luke"...
+#
+# To Do:  
+#   * Should accept multiple hop or proxy and construct chained command
+#   * sometimes re-times out over and over, queing multiple nc/ssh, but not sure why.
+##
+
+# set to "echo" to debug; use -v option to ssh to see output
+DEBUG=
+
+# defaults
+ssh=ssh
+agent="-A"         # forward agent
+tunnel=corkscrew
+timeout=8
+
+# if "nc" not found, try "netcat"; check later
+netcat=nc
+if ! type -p ${netcat} >/dev/null 2>&1; then
+  netcat="netcat"
+fi
+
+# parse args - can specify -n <netcat> and/or -t <tunnel>
+while getopts "n:h:p:s:t:w:" OPT; do
+  #echo "$OPT $OPTARG $OPTIND"
+  case $OPT in
+    h) arr=(${OPTARG//:/ }); hophost="${arr[0]}"; hopport=${arr[1]:+ -p ${arr[1]}} ;;
+    p) arr=(${OPTARG//:/ }); proxyhost="${arr[0]}"; proxyport=${arr[1]} ;;
+    n) netcat=$OPTARG ;;
+    s) ssh=$OPTARG ;;
+    t) tunnel=$OPTARG ;;
+    w) timeout=$OPTARG ;;
+  esac
+done
+shift $(($OPTIND - 1))
+
+# At this point $1 and $2 should be destination host and port, if specified.
+desthost=$1
+destport=${2:-22}  # default to port 22
+
+# Check ability to use netcat now, after user specifies it
+if ! type -p ${netcat} >/dev/null 2>&1; then
+  echo "Cannot find netcat - failing..." 1>&2
+  exit 1;
+fi
+
+# test connection to host directly; go direct if possible, else tunnel or hop
+if ${netcat} -w ${timeout} -z ${desthost} ${destport} >/dev/null 2>&1; then
+  $DEBUG exec ${netcat} ${desthost} ${destport}
+
+# else, if proxy defined, then try that
+elif [ -n "${proxyhost}" ]; then
+  $DEBUG exec ${tunnel} ${proxyhost} ${proxyport} ${desthost} ${destport}
+
+# else, if hop defined, then try that
+elif [ -n "${hophost}" ]; then
+  #echo "Connecting through ${hophost} to ${desthost}" 1>&2
+  # This can recurse through your config file, which is OK sometimes, 
+  # but can also go badly if you try to hop through your to your hop host.
+  # Break that cycle:
+  if [ "${hophost}" == "${desthost}" ]; then
+    echo "Trying to hop through ${hophost} to itself - failing..." 1>&2
+    exit 1;
+#  elif ping -q -t ${timeout} -no ${hophost}; then
+#    echo "Cannot ping ${hophost} - failing..." 1>&2
+#    exit 1;
+  fi
+  # Hop through hophost, using netcat to direct to real destination
+  #$DEBUG exec ${ssh} ${agent} ${hophost} ${hopport} ${netcat} ${desthost} ${destport}
+  # But, have had issues with above use of `exec` failing with error...
+  #$DEBUG ${ssh} ${agent} ${hophost} ${hopport} ${netcat} ${desthost} ${destport}
+  # Better yet, since OpenSSH 5.3 includes a -W option, which implements netcat-like directly.
+  $DEBUG exec ${ssh} ${agent} ${hophost} ${hopport} -W ${desthost}:${destport}
+
+# otherwise, we got SUEd...
+else
+  echo "No proxy or hop host specified - failing..." 1>&2
+  exit 1;
+fi
+
+##
