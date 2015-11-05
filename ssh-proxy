@@ -9,18 +9,18 @@
 # to connect directly.  Often useful on laptops, especially when only
 # SOMETIMES behind a draconian firewall or outside a network with
 # limited ssh connections inbound.
-# 
+#
 # Intended for use inside an ssh-config file, something like this
 # for an outbound http proxy (behind a restrictive outbound firewall):
-# 
+#
 #     Host *
 #       ProxyCommand $HOME/.ssh/proxy -p httpproxy.foo.com:8080 %h %p
-#       
+#
 # or, inbound hop, when limited inbound ssh connections allowed.
-# 
+#
 #     Host *
 #       ProxyCommand $HOME/.ssh/proxy -h ssh-hop.foo.com:8080 %h %p
-# 
+#
 # In either case, the script will first attempt a direct connection,
 # avoiding any overhead.  In all cases, if you have a VPN option, that
 # will probably be better, but even in those cases, this script should
@@ -45,7 +45,7 @@
 # http-proxy or alternate location for netcat on the command line (in
 # your ssh config) OR, of course, "use the source, Luke"...
 #
-# To Do:  
+# To Do:
 #   * Should accept multiple hop or proxy and construct chained command
 #   * sometimes re-times out over and over, queing multiple nc/ssh, but not sure why.
 ##
@@ -59,6 +59,9 @@ agent="-A"         # forward agent
 tunnel=corkscrew
 timeout=8
 
+proxy=${http_proxy-${HTTP_PROXY-${https_proxy-$HTTPS_PROXY}}}
+proxy="$(echo $proxy | sed 's/^http\(\|s\):\/\///g' | sed 's/\///g')"
+
 # if "nc" not found, try "netcat"; check later
 netcat=nc
 if ! type -p ${netcat} >/dev/null 2>&1; then
@@ -70,7 +73,7 @@ while getopts "n:h:p:s:t:w:" OPT; do
   #echo "$OPT $OPTARG $OPTIND"
   case $OPT in
     h) arr=(${OPTARG//:/ }); hophost="${arr[0]}"; hopport=${arr[1]:+ -p ${arr[1]}} ;;
-    p) arr=(${OPTARG//:/ }); proxyhost="${arr[0]}"; proxyport=${arr[1]} ;;
+    p) proxy=$OPTARG ;;
     n) netcat=$OPTARG ;;
     s) ssh=$OPTARG ;;
     t) tunnel=$OPTARG ;;
@@ -78,6 +81,8 @@ while getopts "n:h:p:s:t:w:" OPT; do
   esac
 done
 shift $(($OPTIND - 1))
+
+arr=(${proxy//:/ }); proxyhost="${arr[0]}"; proxyport=${arr[1]}
 
 # At this point $1 and $2 should be destination host and port, if specified.
 desthost=$1
@@ -93,14 +98,10 @@ fi
 if ${netcat} -w ${timeout} -z ${desthost} ${destport} >/dev/null 2>&1; then
   $DEBUG exec ${netcat} ${desthost} ${destport}
 
-# else, if proxy defined, then try that
-elif [ -n "${proxyhost}" ]; then
-  $DEBUG exec ${tunnel} ${proxyhost} ${proxyport} ${desthost} ${destport}
-
 # else, if hop defined, then try that
 elif [ -n "${hophost}" ]; then
   #echo "Connecting through ${hophost} to ${desthost}" 1>&2
-  # This can recurse through your config file, which is OK sometimes, 
+  # This can recurse through your config file, which is OK sometimes,
   # but can also go badly if you try to hop through your to your hop host.
   # Break that cycle:
   if [ "${hophost}" == "${desthost}" ]; then
@@ -116,6 +117,10 @@ elif [ -n "${hophost}" ]; then
   #$DEBUG ${ssh} ${agent} ${hophost} ${hopport} ${netcat} ${desthost} ${destport}
   # Better yet, since OpenSSH 5.3 includes a -W option, which implements netcat-like directly.
   $DEBUG exec ${ssh} ${agent} ${hophost} ${hopport} -W ${desthost}:${destport}
+
+# else, if proxy defined, then try that
+elif [ -n "${proxyhost}" ]; then
+  $DEBUG exec ${tunnel} ${proxyhost} ${proxyport} ${desthost} ${destport}
 
 # otherwise, we got SUEd...
 else
