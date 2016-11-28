@@ -48,6 +48,8 @@
 # To Do:  
 #   * Should accept multiple hop or proxy and construct chained command
 #   * sometimes re-times out over and over, queing multiple nc/ssh, but not sure why.
+#   * evaulate use of `-X connect` option to nc for http proxy
+#       (http://www.perkin.org.uk/posts/ssh-via-http-proxy-in-osx.html)
 ##
 
 # set to "echo" to debug; use -v option to ssh to see output
