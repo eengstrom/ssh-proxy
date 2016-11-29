@@ -1,49 +1,20 @@
 #!/bin/bash
 #
 # Copyright (c) 2005 Eric Engstrom
-# See the file LICENSE for copying permissions and restrictions.
-#
+# See LICENSE for copying permissions and restrictions.
 # Author:  Eric Engstrom (first(-DOT-)last(-AT-)g m a i l(-DOT-)c o m)
 #
-# Simple shell wrapper to proxy/tunnel or hop through ssh when unable
-# to connect directly.  Often useful on laptops, especially when only
-# SOMETIMES behind a draconian firewall or outside a network with
-# limited ssh connections inbound.
-# 
-# Intended for use inside an ssh-config file, something like this
-# for an outbound http proxy (behind a restrictive outbound firewall):
-# 
-#     Host *
-#       ProxyCommand $HOME/.ssh/proxy -p httpproxy.foo.com:8080 %h %p
-#       
-# or, inbound hop, when limited inbound ssh connections allowed.
-# 
-#     Host *
-#       ProxyCommand $HOME/.ssh/proxy -h ssh-hop.foo.com:8080 %h %p
-# 
-# In either case, the script will first attempt a direct connection,
-# avoiding any overhead.  In all cases, if you have a VPN option, that
-# will probably be better, but even in those cases, this script should
-# not interfere.
+# See README.md for usage instructions and examples.
 #
 # Usage:
-#    proxy [optional-args] [-p <http-proxy>[:<proxy-port>]] \
-#                          [-h <ssh-hop-host>[:<hop-port>]] <host> <port>
+#    ssh-proxy [optional-args] [-p <http-proxy>[:<proxy-port>]] \
+#                              [-h <ssh-hop-host>[:<hop-port>]] <host> <port>
 # with optional args:
-#   [-n <netcat>] - version or path to netcat/direct-connect program
-#   [-t <tunnel>] - version or path of http-tunnel program
+#   [-n <netcat>] - path of netcat/direct-connect program
+#   [-s <ssh>]    - path of ssh client 
+#   [-t <tunnel>] - path of http-tunnel program
 #   [-w <timout>] - timeout (seconds) to test connection to proxy server
-#
-# This script assumes ssh, netcat (nc) and corkscrew (an http-proxy
-# available from http://www.agroman.net/corkscrew).  As an alternative
-# to corkscrew, some people have repoted success using desproxy
-# (http://sourceforge.net/projects/desproxy/).
-#
-# Netcat is used both to detect the availablility of the destination
-# or proxy hosts as well as for direct connections.  Both are assumed
-# to be resident in your PATH.  If not, you may specify a different
-# http-proxy or alternate location for netcat on the command line (in
-# your ssh config) OR, of course, "use the source, Luke"...
+#   [-S <regexp>] - regexp to pass to sed to modify destination hostname
 #
 # To Do:  
 #   * Should accept multiple hop or proxy and construct chained command
@@ -68,7 +39,7 @@ if ! type -p ${netcat} >/dev/null 2>&1; then
 fi
 
 # parse args - can specify -n <netcat> and/or -t <tunnel>
-while getopts "n:h:p:s:t:w:" OPT; do
+while getopts "n:h:p:s:t:w:S:" OPT; do
   #echo "$OPT $OPTARG $OPTIND"
   case $OPT in
     h) arr=(${OPTARG//:/ }); hophost="${arr[0]}"; hopport=${arr[1]:+ -p ${arr[1]}} ;;
@@ -77,13 +48,21 @@ while getopts "n:h:p:s:t:w:" OPT; do
     s) ssh=$OPTARG ;;
     t) tunnel=$OPTARG ;;
     w) timeout=$OPTARG ;;
+    S) sedregexp=$OPTARG ;;
   esac
 done
 shift $(($OPTIND - 1))
 
 # At this point $1 and $2 should be destination host and port, if specified.
-desthost=$1
+if [ -n "${sedregexp}" ]; then
+  desthost=$(echo "$1" | sed "${sedregexp}")
+else
+  desthost="$1"
+fi
 destport=${2:-22}  # default to port 22
+
+#echo $desthost:$destport
+#exit
 
 # Check ability to use netcat now, after user specifies it
 if ! type -p ${netcat} >/dev/null 2>&1; then
