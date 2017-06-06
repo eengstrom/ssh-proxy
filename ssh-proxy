@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Copyright (c) 2005 Eric Engstrom
 # See LICENSE for copying permissions and restrictions.
@@ -33,6 +33,7 @@ tunnel=corkscrew
 timeout=8
 
 # if "nc" not found, try "netcat"; check later
+# should look also for ncat, but what preference order?
 netcat=nc
 if ! type -p ${netcat} >/dev/null 2>&1; then
   netcat="netcat"
