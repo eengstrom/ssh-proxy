@@ -11,12 +11,12 @@
 #                              [-h <ssh-hop-host>[:<hop-port>]] <host> <port>
 # with optional args:
 #   [-n <netcat>] - path of netcat/direct-connect program
-#   [-s <ssh>]    - path of ssh client 
+#   [-s <ssh>]    - path of ssh client
 #   [-t <tunnel>] - path of http-tunnel program
 #   [-w <timout>] - timeout (seconds) to test connection to proxy server
 #   [-S <regexp>] - regexp to pass to sed to modify destination hostname
 #
-# To Do:  
+# To Do:
 #   * Should accept multiple hop or proxy and construct chained command
 #   * sometimes re-times out over and over, queing multiple nc/ssh, but not sure why.
 #   * evaulate use of `-X connect` option to nc for http proxy
@@ -81,7 +81,7 @@ elif [ -n "${proxyhost}" ]; then
 # else, if hop defined, then try that
 elif [ -n "${hophost}" ]; then
   #echo "Connecting through ${hophost} to ${desthost}" 1>&2
-  # This can recurse through your config file, which is OK sometimes, 
+  # This can recurse through your config file, which is OK sometimes,
   # but can also go badly if you try to hop through your to your hop host.
   # Break that cycle:
   if [ "${hophost}" == "${desthost}" ]; then
