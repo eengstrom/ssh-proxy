@@ -32,6 +32,13 @@ agent="-A"         # forward agent
 tunnel=corkscrew
 timeout=8
 
+# Allow default proxy to come from environment 
+proxy=${http_proxy-${HTTP_PROXY-${https_proxy-$HTTPS_PROXY}}}
+proxy="$(echo $proxy | sed 's/^http\(\|s\):\/\///g' | sed 's/\///g')"
+
+echo $proxy
+exit
+
 # if "nc" not found, try "netcat"; check later
 # should look also for ncat, but what preference order?
 netcat=nc
@@ -44,7 +51,7 @@ while getopts "n:h:p:s:t:w:S:" OPT; do
   #echo "$OPT $OPTARG $OPTIND"
   case $OPT in
     h) arr=(${OPTARG//:/ }); hophost="${arr[0]}"; hopport=${arr[1]:+ -p ${arr[1]}} ;;
-    p) arr=(${OPTARG//:/ }); proxyhost="${arr[0]}"; proxyport=${arr[1]} ;;
+    p) proxy=$OPTARG ;;
     n) netcat=$OPTARG ;;
     s) ssh=$OPTARG ;;
     t) tunnel=$OPTARG ;;
@@ -53,6 +60,8 @@ while getopts "n:h:p:s:t:w:S:" OPT; do
   esac
 done
 shift $(($OPTIND - 1))
+
+arr=(${proxy//:/ }); proxyhost="${arr[0]}"; proxyport=${arr[1]}
 
 # At this point $1 and $2 should be destination host and port, if specified.
 if [ -n "${sedregexp}" ]; then
@@ -75,10 +84,6 @@ fi
 if ${netcat} -w ${timeout} -z ${desthost} ${destport} >/dev/null 2>&1; then
   $DEBUG exec ${netcat} ${desthost} ${destport}
 
-# else, if proxy defined, then try that
-elif [ -n "${proxyhost}" ]; then
-  $DEBUG exec ${tunnel} ${proxyhost} ${proxyport} ${desthost} ${destport}
-
 # else, if hop defined, then try that
 elif [ -n "${hophost}" ]; then
   #echo "Connecting through ${hophost} to ${desthost}" 1>&2
@@ -98,6 +103,10 @@ elif [ -n "${hophost}" ]; then
   #$DEBUG ${ssh} ${agent} ${hophost} ${hopport} ${netcat} ${desthost} ${destport}
   # Better yet, since OpenSSH 5.3 includes a -W option, which implements netcat-like directly.
   $DEBUG exec ${ssh} ${agent} ${hophost} ${hopport} -W ${desthost}:${destport}
+
+# else, if proxy defined, then try that
+elif [ -n "${proxyhost}" ]; then
+  $DEBUG exec ${tunnel} ${proxyhost} ${proxyport} ${desthost} ${destport}
 
 # otherwise, we got SUEd...
 else
