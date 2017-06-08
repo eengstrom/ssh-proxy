@@ -32,12 +32,11 @@ agent="-A"         # forward agent
 tunnel=corkscrew
 timeout=8
 
-# Allow default proxy to come from environment 
+# Allow default proxy host to come from environment
 proxy=${http_proxy-${HTTP_PROXY-${https_proxy-$HTTPS_PROXY}}}
-proxy="$(echo $proxy | sed 's/^http\(\|s\):\/\///g' | sed 's/\///g')"
-
-echo $proxy
-exit
+# strip off http[s]:// and anything after first slash
+proxy=${proxy#http?://}
+proxy=${proxy%%/*}
 
 # if "nc" not found, try "netcat"; check later
 # should look also for ncat, but what preference order?
@@ -61,18 +60,16 @@ while getopts "n:h:p:s:t:w:S:" OPT; do
 done
 shift $(($OPTIND - 1))
 
-arr=(${proxy//:/ }); proxyhost="${arr[0]}"; proxyport=${arr[1]}
+# Separate proxy var into host and (optional) port
+if [ -n "${proxy}" ]; then
+  arr=(${proxy//:/ }); proxyhost="${arr[0]}"; proxyport=${arr[1]}
+fi
+#echo "Proxy: $proxyhost -- $proxyport"; exit
 
 # At this point $1 and $2 should be destination host and port, if specified.
-if [ -n "${sedregexp}" ]; then
-  desthost=$(echo "$1" | sed "${sedregexp}")
-else
-  desthost="$1"
-fi
+desthost="$(echo "$1" | sed -e "${sedregexp}")"
 destport=${2:-22}  # default to port 22
-
-#echo $desthost:$destport
-#exit
+#echo "Dest: $desthost -- $destport"; exit
 
 # Check ability to use netcat now, after user specifies it
 if ! type -p ${netcat} >/dev/null 2>&1; then

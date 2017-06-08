@@ -19,6 +19,13 @@ Outbound http proxy (e.g., behind a restrictive outbound firewall):
     Host *
       ProxyCommand $HOME/.ssh/proxy -p httpproxy.foo.com:8080 %h %p
 
+If not specified on the command line, the proxy will default to the
+first non-empty evironment variables, in order:
+* `http_proxy`
+* `HTTP_PROXY`
+* `https_proxy`
+* `HTTPS_PROXY`
+
 Inbound hop, when limited inbound ssh connections allowed:
 
     Host *
